@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>FNF Chart Editor ULTIMATE - PC版デザイン</title>
+<style>
+/* ====== 全体 ====== */
+body {
+  margin: 0;
+  background: #101010; /* PC版黒系背景 */
+  color: #fff;
+  font-family: sans-serif;
+  user-select: none;
+}
+
+/* ====== ヘッダー ====== */
+header {
+  position: sticky;
+  top: 0;
+  background: #111;
+  border-bottom: 2px solid #333;
+  padding: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+/* ====== ボタン・入力 ====== */
+button, input, select {
+  margin: 2px;
+  padding: 4px 6px;
+  border-radius: 2px;
+  border: 1px solid #555;
+  background: #222;
+  color: #fff;
+  font-size: 14px;
+}
+button:hover { background: #333; }
+
+/* ====== ノーツエリア ====== */
+#lanes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  height: 360px;
+  position: relative;
+  background: linear-gradient(to top, #111 0px, #222 20px);
+  background-size: 100% 80px; /* Section:4拍ごと */
+  border-top: 2px solid #555;
+  border-bottom: 2px solid #555;
+}
+
+/* ====== 各レーン ====== */
+.lane {
+  border-left: 1px solid #333;
+  border-right: 1px solid #333;
+  position: relative;
+}
+
+/* ====== ノーツ ====== */
+.note {
+  position: absolute;
+  width: 100%;
+  height: 10px;
+  background: #00FFFF; /* タップノーツ色 */
+  border: 1px solid #000;
+  box-sizing: border-box;
+  cursor: pointer;
+}
+.note.long { background: #0FA; } /* ロングノーツ */
+.note.selected { outline: 2px solid #FFD700; } /* 選択中 */
+
+/* ====== タイムライン ====== */
+#timeline {
+  height: 20px;
+  background: #222;
+  border-bottom: 2px solid #555;
+}
+
+/* ====== 出力JSONエリア ====== */
+textarea {
+  width: 100%;
+  height: 220px;
+  background: #000;
+  color: #0f0;
+  border: 2px solid #333;
+  margin-top: 4px;
+  padding: 6px;
+  font-family: monospace;
+  font-size: 12px;
+  box-sizing: border-box;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+BPM <input id="bpm" type="number" value="120">
+Speed <input id="speed" type="number" value="2.6" step="0.1">
+Snap
+<select id="snap">
+<option value="1">1/4</option>
+<option value="0.5">1/8</option>
+<option value="0.25" selected>1/16</option>
+<option value="0.125">1/32</option>
+</select>
+Diff
+<select id="diff">
+<option>easy</option>
+<option selected>normal</option>
+<option>hard</option>
+</select>
+Sustain(ms) <input id="sustain" type="number" value="0">
+<button onclick="undo()">Undo</button>
+<button onclick="exportJSON()">Export</button>
+</header>
+
+<div id="timeline"></div>
+<div id="lanes"></div>
+<textarea id="output"></textarea>
+
+<script>
+// ====== CORE STATE ======
+const state = {
+  song:{bpm:120,speed:2.6},
+  lanes:4,
+  diffs:{easy:[],normal:[],hard:[]},
+  editor:{beat:0,snap:0.25,history:[]},
+  generators:[]
+};
+
+// ====== UTILS ======
+const beatMs=()=>60000/state.song.bpm;
+const beatToMs=b=>Math.floor(b*beatMs());
+const msToBeat=m=>m/beatMs();
+
+function saveHistory(){
+  state.editor.history.push(JSON.stringify(state.diffs));
+}
+function undo(){
+  if(!state.editor.history.length) return;
+  state.diffs = JSON.parse(state.editor.history.pop());
+  render();
+}
+
+// ====== NOTES ======
+function addNote(time,lane,sus=0){
+  saveHistory();
+  state.diffs[curDiff()].push([time,lane,sus]);
+  render();
+}
+function removeNote(i){
+  saveHistory();
+  state.diffs[curDiff()].splice(i,1);
+  render();
+}
+
+// ====== GENERATORS (無限ノーツ) ======
+function getNotesInRange(startBeat,endBeat){
+  let result=[];
+  // 手動ノーツ
+  state.diffs[curDiff()].forEach(n=>{
+    const b = msToBeat(n[0]);
+    if(b>=startBeat && b<=endBeat) result.push(n);
+  });
+  // 自動生成ノーツ
+  state.generators.forEach(g=>{
+    for(let b=g.startBeat; b<=endBeat; b+=g.snap){
+      if(b<startBeat) continue;
+      g.func(b).forEach(n=>{
+        result.push([n.time,n.lane,n.sustain]);
+      });
+    }
+  });
+  return result;
+}
+
+// ====== UI ======
+const lanesDiv=document.getElementById("lanes");
+function setupLanes(){
+  lanesDiv.style.gridTemplateColumns=`repeat(${state.lanes},1fr)`;
+  lanesDiv.innerHTML="";
+  for(let i=0;i<state.lanes;i++){
+    const l=document.createElement("div");
+    l.className="lane";
+    l.onclick=()=>place(i);
+    lanesDiv.appendChild(l);
+  }
+}
+setupLanes();
+
+function place(lane){
+  state.song.bpm=+bpm.value;
+  state.song.speed=+speed.value;
+  state.editor.snap=+snap.value;
+  const sus=+sustain.value;
+  addNote(beatToMs(state.editor.beat),lane,sus);
+  state.editor.beat+=state.editor.snap;
+}
+
+function curDiff(){return diff.value;}
+
+function render(){
+  setupLanes();
+  state.diffs[curDiff()].forEach((n,i)=>{
+    const el=document.createElement("div");
+    el.className="note"+(n[2]>0?" long":"");
+    el.style.bottom=(msToBeat(n[0])*20)+"px";
+    el.style.height=(n[2]>0?(n[2]/20):10)+"px";
+    el.onclick=e=>{e.stopPropagation(); removeNote(i)};
+    lanesDiv.children[n[1]].appendChild(el);
+  });
+}
+
+// ====== JSON ======
+function exportJSON(){
+  const notes=getNotesInRange(0,128); // 任意範囲
+  const json={song:{bpm:state.song.bpm,speed:state.song.speed,notes}};
+  output.value=JSON.stringify(json,null,2);
+}
+
+render();
+
+// ====== AUTO GEN EXAMPLE ======
+// 例：4拍ごとに交互配置
+state.generators.push({
+  startBeat:0,
+  endBeat:Infinity,
+  snap:0.5,
+  func:(beat)=>[{time:beatToMs(beat),lane:Math.floor(beat)%state.lanes,sustain:0}]
+});
+</script>
+
+</body>
+</html>
