@@ -2,57 +2,38 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>FNF Chart Editor - Ultimate iOS版</title>
+<title>FNF Ultimate Chart Editor</title>
 <style>
-/* ====== 全体 ====== */
-body {
-  margin: 0; background: #101010; color: #fff;
-  font-family: sans-serif; user-select: none;
-}
-
-/* ====== ヘッダー ====== */
-header {
-  position: sticky; top:0; background: #111; border-bottom: 2px solid #333;
-  padding: 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
-}
-button,input,select { margin:2px;padding:4px 6px;border-radius:2px;border:1px solid #555;background:#222;color:#fff;font-size:14px; }
-button:hover{background:#333}
-
-/* ====== 波形 ====== */
-#wave { width: 100%; height:80px; display:block; background:#111; border-bottom:2px solid #555; }
-
-/* ====== タイムライン ====== */
-#timeline { height: 20px; background:#222; border-bottom:2px solid #555; }
-
-/* ====== ノーツエリア ====== */
-#lanes { display:grid; grid-template-columns:repeat(4,1fr); height:360px; position:relative; background:linear-gradient(to top,#111 0px,#222 20px); background-size:100% 80px; border-top:2px solid #555; border-bottom:2px solid #555; overflow:hidden; }
-
-/* ====== 各レーン ====== */
-.lane { border-left:1px solid #333; border-right:1px solid #333; position:relative; }
-
-/* ====== ノーツ ====== */
-.note { position:absolute; width:100%; height:10px; background:#00FFFF; border:1px solid #000; box-sizing:border-box; cursor:pointer; }
-.note.long{ background:#0FA; }
-.note.selected{ outline:2px solid #FFD700; }
-
-/* ====== 出力JSON ====== */
-textarea { width:100%; height:220px; background:#000; color:#0f0; border:2px solid #333; margin-top:4px; padding:6px; font-family:monospace; font-size:12px; box-sizing:border-box; }
+body{margin:0;background:#101010;color:#fff;font-family:sans-serif;user-select:none;}
+header{position:sticky;top:0;background:#111;border-bottom:2px solid #333;padding:8px;display:flex;flex-wrap:wrap;gap:4px;align-items:center;}
+button,input,select{margin:2px;padding:4px 6px;border-radius:2px;border:1px solid #555;background:#222;color:#fff;font-size:14px;}
+button:hover{background:#333;}
+#wave{width:100%;height:80px;display:block;background:#111;border-bottom:2px solid #555;}
+#timeline{height:20px;background:#222;border-bottom:2px solid #555;}
+#lanes{display:grid;grid-template-columns:repeat(4,1fr);position:relative;background:linear-gradient(to top,#111 0px,#222 20px);background-size:100% 80px;border-top:2px solid #555;border-bottom:2px solid #555;overflow:hidden;height:360px;}
+.lane{border-left:1px solid #333;border-right:1px solid #333;position:relative;}
+.note{position:absolute;width:100%;height:10px;background:#0ff;border:1px solid #000;box-sizing:border-box;cursor:pointer;}
+.note.long{background:#0fa;}
+.note.selected{outline:2px solid #ff0;}
+textarea{width:100%;height:220px;background:#000;color:#0f0;border:2px solid #333;margin-top:4px;padding:6px;font-family:monospace;font-size:12px;box-sizing:border-box;}
 </style>
 </head>
-
 <body>
 
 <header>
 <input type="file" id="audioUpload" accept="audio/*">
-BPM <input id="bpm" type="number" value="120">
-Speed <input id="speed" type="number" value="2.6" step="0.1">
-Snap <select id="snap">
+BPM<input id="bpm" type="number" value="120">
+Speed<input id="speed" type="number" value="2.6" step="0.1">
+Snap<select id="snap">
 <option value="1">1/4</option>
 <option value="0.5">1/8</option>
 <option value="0.25" selected>1/16</option>
-<option value="0.125">1/32</option></select>
-Diff <select id="diff"><option>easy</option><option selected>normal</option><option>hard</option></select>
-Sustain(ms) <input id="sustain" type="number" value="0">
+<option value="0.125">1/32</option>
+</select>
+Diff<select id="diff">
+<option>easy</option><option selected>normal</option><option>hard</option>
+</select>
+Sustain(ms)<input id="sustain" type="number" value="0">
 <button onclick="undo()">Undo</button>
 <button onclick="playPause()">Play/Pause</button>
 <button onclick="exportJSON()">Export</button>
@@ -62,29 +43,20 @@ Sustain(ms) <input id="sustain" type="number" value="0">
 <div id="timeline"></div>
 <div id="lanes"></div>
 <textarea id="output"></textarea>
-
 <audio id="song" preload="auto"></audio>
 
 <script>
 /* ====== STATE ====== */
-const state={song:{bpm:120,speed:2.6},lanes:4,diffs:{easy:[],normal:[],hard:[]},editor:{snap:0.25,history:[]},generators:[],scrollY:0};
-
-/* ====== UTILS ====== */
-const bpm=document.getElementById("bpm");
-const speed=document.getElementById("speed");
-const snap=document.getElementById("snap");
-const diff=document.getElementById("diff");
-const sustain=document.getElementById("sustain");
-const lanesDiv=document.getElementById("lanes");
-const output=document.getElementById("output");
-const wave=document.getElementById("wave");
-const ctx=wave.getContext("2d");
-const song=document.getElementById("song");
+const state={song:{bpm:120,speed:2.6},lanes:4,diffs:{easy:[],normal:[],hard:[]},editor:{snap:0.25,history:[]},generators:[],scrollY:0,drag:{active:false,note:null,startY:0}}; 
+const bpm=document.getElementById("bpm"),speed=document.getElementById("speed"),snap=document.getElementById("snap"),diff=document.getElementById("diff"),sustain=document.getElementById("sustain");
+const lanesDiv=document.getElementById("lanes"),output=document.getElementById("output"),wave=document.getElementById("wave"),ctx=wave.getContext("2d"),song=document.getElementById("song");
+const audioUpload=document.getElementById("audioUpload");
 
 const beatMs=()=>60000/state.song.bpm;
 const beatToMs=b=>Math.floor(b*beatMs());
 const msToBeat=m=>m/beatMs();
 
+/* ====== HISTORY ====== */
 function saveHistory(){state.editor.history.push(JSON.stringify(state.diffs));}
 function undo(){if(state.editor.history.length){state.diffs=JSON.parse(state.editor.history.pop()); render();}}
 
@@ -99,27 +71,42 @@ function getNotesInRange(startBeat,endBeat){
   return result;
 }
 
-/* ====== SETUP LANES ====== */
+/* ====== LANES ====== */
 function setupLanes(){
   lanesDiv.style.gridTemplateColumns=`repeat(${state.lanes},1fr)`;
   lanesDiv.innerHTML="";
   for(let i=0;i<state.lanes;i++){
     const l=document.createElement("div");
     l.className="lane";
-    l.addEventListener("click",(e)=>place(i,e));
+    l.addEventListener("mousedown",(e)=>startDrag(i,e));
+    l.addEventListener("mouseup",(e)=>endDrag(i,e));
+    l.addEventListener("mousemove",(e)=>dragMove(i,e));
     lanesDiv.appendChild(l);
   }
 }
 setupLanes();
 
-/* ====== PLACE NOTE ====== */
-function place(lane,e){
+/* ====== DRAG FOR LONG ====== */
+function startDrag(lane,e){
+  state.editor.drag.active=true;
   const rect=lanesDiv.children[lane].getBoundingClientRect();
-  const y = e.clientY - rect.top + state.scrollY;
-  let beat = y/20; // scale
-  beat = Math.round(beat/state.editor.snap)*state.editor.snap;
-  const sus = +sustain.value;
-  addNote(beatToMs(beat),lane,sus);
+  const y=e.clientY-rect.top + state.scrollY;
+  const beat=Math.round((y/20)/state.editor.snap)*state.editor.snap;
+  state.editor.drag.note={time:beatToMs(beat),lane:lane,sustain:0};
+  state.editor.drag.startY=y;
+  addNote(state.editor.drag.note.time,lane,0);
+}
+function dragMove(lane,e){
+  if(!state.editor.drag.active || !state.editor.drag.note)return;
+  const rect=lanesDiv.children[lane].getBoundingClientRect();
+  let y=e.clientY-rect.top+state.scrollY;
+  let susMs=(y-state.editor.drag.startY)*20;
+  state.editor.drag.note.sustain=Math.max(0,susMs);
+  state.diffs[curDiff()][state.diffs[curDiff()].length-1][2]=state.editor.drag.note.sustain;
+  render();
+}
+function endDrag(lane,e){
+  state.editor.drag.active=false; state.editor.drag.note=null;
 }
 
 /* ====== RENDER ====== */
@@ -142,6 +129,7 @@ let waveData=[];
 function drawWaveDisplay(){
   ctx.clearRect(0,0,wave.width,wave.height);
   ctx.fillStyle="#444";
+  if(!waveData.length)return;
   for(let i=0;i<waveData.length;i++){
     const x=i*wave.width/waveData.length;
     const y=wave.height/2 - waveData[i]*wave.height/2;
@@ -150,9 +138,9 @@ function drawWaveDisplay(){
 }
 
 /* ====== AUDIO UPLOAD ====== */
-document.getElementById("audioUpload").addEventListener("change",(e)=>{
-  const file = e.target.files[0];
-  if(!file) return;
+audioUpload.addEventListener("change",(e)=>{
+  const file=e.target.files[0];
+  if(!file)return;
   song.src=URL.createObjectURL(file);
   song.load();
   generateWaveform(file);
@@ -165,19 +153,18 @@ async function generateWaveform(file){
     const arrayBuffer=ev.target.result;
     const audioCtx=new AudioContext();
     const buffer=await audioCtx.decodeAudioData(arrayBuffer);
-    waveData=buffer.getChannelData(0); render();
+    waveData=buffer.getChannelData(0);
+    render();
   }
   reader.readAsArrayBuffer(file);
 }
 
-/* ====== PLAY/PAUSE ====== */
+/* ====== PLAY/PAUSE & SCROLL ====== */
 function playPause(){
   if(song.paused) song.play();
   else song.pause();
   requestAnimationFrame(updateScroll);
 }
-
-/* ====== SCROLL SYNC ====== */
 function updateScroll(){
   state.scrollY = msToBeat(song.currentTime*1000)*20 - lanesDiv.clientHeight/2;
   render();
@@ -191,11 +178,8 @@ function exportJSON(){
   output.value=JSON.stringify(json,null,2);
 }
 
-/* ====== AUTO GEN EXAMPLE ====== */
-state.generators.push({
-  startBeat:0,endBeat:Infinity,snap:0.5,
-  func:(beat)=>[{time:beatToMs(beat),lane:Math.floor(beat)%state.lanes,sustain:0}]
-});
+/* ====== AUTO GENERATOR EXAMPLE ====== */
+state.generators.push({startBeat:0,endBeat:Infinity,snap:0.5,func:(beat)=>[{time:beatToMs(beat),lane:Math.floor(beat)%state.lanes,sustain:0}]});
 </script>
 
 </body>
